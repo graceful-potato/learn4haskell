@@ -509,7 +509,7 @@ branches because it is an expression and it must always return some value.
   satisfying the check will be returned and, therefore, evaluated.
 -}
 closestToZero :: Int -> Int -> Int
-closestToZero x y = if (abs x) < (abs y) then x else y
+closestToZero x y = if abs x < abs y then x else y
 
 
 {- |
@@ -631,10 +631,10 @@ specifying complex expressions.
 -}
 
 sumLast2 :: Integral a => a -> a
-sumLast2 n = digitA + digitB
+sumLast2 n = digitLast + digitSecondLast
   where
-    digitA = x `mod` 10
-    digitB = (x `div` 10) `mod` 10
+    (rest, digitLast) = x `divMod` 10 
+    digitSecondLast = rest `mod` 10
     x = abs n
 
 
