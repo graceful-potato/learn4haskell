@@ -354,7 +354,7 @@ Implement a function that returns only the first half of a given list.
 -}
 -- PUT THE FUNCTION TYPE IN HERE
 firstHalf :: [a] -> [a]
-firstHalf l = take ((length l) `div` 2) l
+firstHalf l = take (length l `div` 2) l
 
 
 {- |
@@ -631,7 +631,6 @@ Write a function that takes elements of a list only on even positions.
 takeEven :: [a] -> [a]
 takeEven [] = []
 takeEven [x] = [x]
-takeEven [x, _] = [x]
 takeEven (x:_:ys) = x:takeEven ys
 
 {- |
@@ -739,7 +738,7 @@ value of the element itself
 🕯 HINT: Use combination of 'map' and 'replicate'
 -}
 smartReplicate :: [Int] -> [Int]
-smartReplicate l = concat $ map (\e -> replicate e e) l
+smartReplicate l = concatMap (\e -> replicate e e) l
 
 {- |
 =⚔️= Task 9
@@ -753,7 +752,7 @@ the list with only those lists that contain a passed element.
 🕯 HINT: Use the 'elem' function to check whether an element belongs to a list
 -}
 contains :: Int -> [[Int]] -> [[Int]]
-contains num list = filter (\innerList -> num `elem` innerList) list
+contains num = filter (num `elem`)
 
 
 {- |
@@ -857,12 +856,15 @@ list.
 🕯 HINT: Use the 'cycle' function
 -}
 rotate :: Int -> [a] -> [a]
-rotate n l
+rotate n list
+  | null list = []
   | n < 0 = []
-  | otherwise = take len $ drop n infList
+  | from == 0 = list
+  | otherwise = take len $ drop from infList
   where
-    len = length l
-    infList = cycle l
+    infList = cycle list
+    len = length list
+    from = n `mod` len
 
 {- |
 =💣= Task 12*
