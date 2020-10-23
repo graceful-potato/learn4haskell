@@ -50,9 +50,11 @@ signatures in places where you can't by default. We believe it's helpful to
 provide more top-level type signatures, especially when learning Haskell.
 -}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE RecordWildCards #-}
+
 
 module Chapter3 where
-
+import qualified Data.List.NonEmpty as NE
 {-
 =🛡= Types in Haskell
 
@@ -392,11 +394,10 @@ data Monster = Monster { monsterHealth :: Int
                        } deriving (Show)
 
 fight :: Monster -> Knight -> Int
-fight Monster { monsterHealth = mHealth, monsterAttack = mAttack, monsterGold = mGold }
-      Knight { knightHealth = kHealth, knightAttack = kAttack, knightGold = kGold }
-  | kAttack >= mHealth = kGold + mGold
-  | mAttack >= kHealth = -1
-  | otherwise          = kGold
+fight Monster {..} Knight {..}
+  | knightAttack >= monsterHealth = knightGold + monsterGold
+  | monsterAttack >= knightHealth = -1
+  | otherwise                     = knightGold
 
 {- |
 =🛡= Sum types
@@ -991,7 +992,7 @@ instance Append Gold where
 
 instance Append [a] where
   append :: [a] -> [a] -> [a]
-  append xs ys = xs ++ ys
+  append = (++)
 
 instance Append a => Append (Maybe a) where
   append :: Maybe a -> Maybe a -> Maybe a
@@ -1063,7 +1064,7 @@ data Weekday = Monday
              | Thursday
              | Friday
              | Saturday
-             | Sunday deriving (Show, Eq, Enum)
+             | Sunday deriving (Show, Eq, Enum, Bounded)
 
 isWeekend :: Weekday -> Bool
 isWeekend Saturday = True
@@ -1072,7 +1073,7 @@ isWeekend _        = False
 
 nextDay :: Weekday -> Weekday
 nextDay day
-  | day == Sunday = Monday
+  | day == maxBound = minBound
   | otherwise = succ day
 
 daysToParty :: Weekday -> Int
@@ -1121,24 +1122,25 @@ data Monster'Action = MAttack
 data Knight' = Knight' { knight'Health  :: Health
                        , knight'Attack  :: Attack
                        , knight'Armor   :: Armor
-                       , knight'Actions :: [Knight'Action]
+                       , knight'Actions :: NE.NonEmpty Knight'Action
                        } deriving (Show)
 data Monster' = Monster' { monster'Health  :: Health
                          , monster'Attack  :: Attack
-                         , monster'Actions :: [Monster'Action]
+                         , monster'Actions :: NE.NonEmpty Monster'Action
                          } deriving (Show)
 
 class (Show a) => Fighter a where
   performAction :: (Fighter b) => a -> b -> (a, b)
   receiveDamage :: a -> Attack -> a
   getHealth :: a -> Int
+  rotateActions :: a -> a
 
 instance Fighter Knight' where
   performAction :: (Fighter enemy) => Knight' -> enemy -> (Knight', enemy)
   performAction knight@(Knight' { knight'Health = (Health kHealth)
                                 , knight'Attack = kAttack
                                 , knight'Armor  = (Armor  kArmor)
-                                , knight'Actions = (currentAction:actions)
+                                , knight'Actions = (currentAction NE.:| _)
                                 })
                 enemy =
     case currentAction of
@@ -1146,7 +1148,7 @@ instance Fighter Knight' where
       HealthPotion -> (knight' { knight'Health = Health (kHealth + 20) }, enemy)
       IncreaseArmor -> (knight' { knight'Armor = Armor (kArmor + 5) }, enemy)
     where
-      knight' = knight { knight'Actions = actions ++ [currentAction] }
+      knight' = rotateActions knight
 
   receiveDamage :: Knight' -> Attack -> Knight'
   receiveDamage knight@(Knight' { knight'Health = (Health kHealth)
@@ -1160,15 +1162,22 @@ instance Fighter Knight' where
   getHealth :: Knight' -> Int
   getHealth (Knight' { knight'Health = (Health mHealth)}) = mHealth
 
+  rotateActions :: Knight' -> Knight'
+  rotateActions knight@(Knight' {..}) = knight { knight'Actions = NE.fromList $ take len (NE.drop 1 infList) }
+    where
+      infList = NE.cycle knight'Actions
+      len = NE.length knight'Actions
+
 instance Fighter Monster' where
   performAction :: (Fighter enemy) => Monster' -> enemy -> (Monster', enemy)
-  performAction monster enemy = 
+  performAction monster@(Monster' { monster'Attack  = mAttack
+                                  , monster'Actions = (currentAction NE.:| _) })
+                enemy = 
     case currentAction of
-      MAttack -> (nextActionMonster, receiveDamage enemy (monster'Attack monster)) 
-      RunAway -> (nextActionMonster { monster'Health = Health 0 }, enemy)
+      MAttack -> (monster', receiveDamage enemy mAttack) 
+      RunAway -> (monster' { monster'Health = Health 0 }, enemy)
     where
-      (currentAction:actions) = monster'Actions monster
-      nextActionMonster = monster { monster'Actions = actions ++ [currentAction]}
+      monster' = rotateActions monster
 
   receiveDamage :: Monster' -> Attack -> Monster'
   receiveDamage monster@(Monster' { monster'Health = (Health mHealth) })
@@ -1177,6 +1186,12 @@ instance Fighter Monster' where
   
   getHealth :: Monster' -> Int
   getHealth (Monster' { monster'Health = (Health mHealth)}) = mHealth
+
+  rotateActions :: Monster' -> Monster'
+  rotateActions monster@(Monster' {..}) = monster { monster'Actions = NE.fromList $ take len (NE.drop 1 infList) }
+    where
+      infList = NE.cycle monster'Actions
+      len = NE.length monster'Actions
 
 fight' :: (Fighter a, Fighter b) => a -> b -> String
 fight' fighterA fighterB
@@ -1187,9 +1202,9 @@ fight' fighterA fighterB
     (nextFighterA, nextFighterB) = performAction fighterA fighterB
 
 myMonster :: Monster'
-myMonster = Monster' (Health 150) (Attack 50) [MAttack, MAttack, MAttack, RunAway]
+myMonster = Monster' (Health 150) (Attack 50) (NE.fromList [MAttack, MAttack, MAttack, RunAway])
 myKnight :: Knight'
-myKnight = Knight' (Health 200) (Attack 35) (Armor 5) [IncreaseArmor, KAttack, KAttack, HealthPotion, KAttack]
+myKnight = Knight' (Health 200) (Attack 35) (Armor 5) (NE.fromList [IncreaseArmor, KAttack, KAttack, HealthPotion, KAttack])
 {-
 You did it! Now it is time to open pull request with your changes
 and summon @vrom911 and @chshersh for the review!
