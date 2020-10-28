@@ -39,6 +39,7 @@ Perfect. Let's crush this!
 
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE InstanceSigs    #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Chapter4 where
 
@@ -114,23 +115,23 @@ As always, try to guess the output first! And don't forget to insert
 the output in here:
 
 >>> :k Char
-
+Char :: *
 >>> :k Bool
-
+Bool :: *
 >>> :k [Int]
-
+[Int] :: *
 >>> :k []
-
+[] :: * -> *
 >>> :k (->)
-
+(->) :: * -> * -> *
 >>> :k Either
-
+Either :: * -> * -> *
 >>> data Trinity a b c = MkTrinity a b c
 >>> :k Trinity
-
+Trinity :: * -> * -> * -> *
 >>> data IntBox f = MkIntBox (f Int)
 >>> :k IntBox
-
+IntBox :: (* -> *) -> *
 -}
 
 {- |
@@ -293,7 +294,8 @@ values and apply them to the type level?
 -}
 instance Functor (Secret e) where
     fmap :: (a -> b) -> Secret e a -> Secret e b
-    fmap = error "fmap for Box: not implemented!"
+    fmap f (Reward x) = Reward (f x)
+    fmap _ (Trap b) = Trap b 
 
 {- |
 =⚔️= Task 3
@@ -305,8 +307,12 @@ typeclasses for standard data types.
 -}
 data List a
     = Empty
-    | Cons a (List a)
+    | Cons a (List a) deriving (Show)
 
+instance Functor List where
+  fmap :: (a -> b) -> List a -> List b
+  fmap _ Empty = Empty
+  fmap f (Cons x xs) = Cons (f x) (fmap f xs) 
 {- |
 =🛡= Applicative
 
@@ -472,10 +478,12 @@ Implement the Applicative instance for our 'Secret' data type from before.
 -}
 instance Applicative (Secret e) where
     pure :: a -> Secret e a
-    pure = error "pure Secret: Not implemented!"
+    pure = Reward
 
     (<*>) :: Secret e (a -> b) -> Secret e a -> Secret e b
-    (<*>) = error "(<*>) Secret: Not implemented!"
+    (<*>) (Trap x) _ = Trap x
+    (<*>) (Reward f) a = fmap f a
+
 
 {- |
 =⚔️= Task 5
@@ -488,7 +496,18 @@ Implement the 'Applicative' instance for our 'List' type.
   may also need to implement a few useful helper functions for our List
   type.
 -}
+listConcat :: List a -> List a -> List a
+listConcat xs Empty = xs
+listConcat Empty ys = ys
+listConcat (Cons x xs) ys = Cons x (listConcat xs ys)
 
+instance Applicative List where
+  pure :: a -> List a
+  pure x = Cons x Empty
+
+  (<*>) :: List (a -> b) -> List a -> List b
+  (<*>) Empty _ = Empty
+  (<*>) (Cons f fs) as = listConcat (fmap f as) (fs <*> as)
 
 {- |
 =🛡= Monad
@@ -600,7 +619,8 @@ Implement the 'Monad' instance for our 'Secret' type.
 -}
 instance Monad (Secret e) where
     (>>=) :: Secret e a -> (a -> Secret e b) -> Secret e b
-    (>>=) = error "bind Secret: Not implemented!"
+    (>>=) (Trap x) _ = Trap x
+    (>>=) (Reward x) f = f x
 
 {- |
 =⚔️= Task 7
@@ -610,7 +630,17 @@ Implement the 'Monad' instance for our lists.
 🕯 HINT: You probably will need to implement a helper function (or
   maybe a few) to flatten lists of lists to a single list.
 -}
+instance Monad List where
+  (>>=) :: List a -> (a -> List b) -> List b
+  (>>=) Empty _ = Empty
+  (>>=) (Cons x xs) f = listConcat (f x) (xs >>= f)
 
+-- Test
+-- double :: Int -> List Int
+-- double x = Cons x (Cons x Empty)
+
+-- l = Cons 1 (Cons 2 Empty)
+-- l >>= double
 
 {- |
 =💣= Task 8*: Before the Final Boss
@@ -629,7 +659,16 @@ Can you implement a monad version of AND, polymorphic over any monad?
 🕯 HINT: Use "(>>=)", "pure" and anonymous function
 -}
 andM :: (Monad m) => m Bool -> m Bool -> m Bool
-andM = error "andM: Not implemented!"
+andM = undefined
+-- I didnt understand how to solve this task. I tried these:
+-- andM mx my = mx >>= (\x -> my >>= (\y -> pure (x && y)))
+-- andM mx my = mx >>= (\x -> fmap (&& x) my )
+-- andM mx my = mx >>= (\x -> pure (&& x) <*> my )
+-- but they all failed 1 test:
+-- it "Just False - Nothing" $ andM (Just False) Nothing `shouldBe` Just False
+-- to be honest i dont understand why it should be Just False in this case but at the same time it should be Nothing in these cases:
+-- it "Nothing - Just" $ andM Nothing (Just True) `shouldBe` Nothing
+-- it "Just True - Nothing" $ andM (Just True) Nothing `shouldBe` Nothing
 
 {- |
 =🐉= Task 9*: Final Dungeon Boss
@@ -673,6 +712,48 @@ Specifically,
  ❃ Implement the function to convert Tree to list
 -}
 
+data Tree a = None | Node { nodeValue :: a
+                          , nodeLeft :: Tree a
+                          , nodeRight :: Tree a } deriving (Show)
+
+instance Functor Tree where
+  fmap :: (a -> b) -> Tree a -> Tree b
+  fmap _ None = None
+  fmap f (Node {..}) = Node { nodeValue = f nodeValue
+                            , nodeLeft = fmap f nodeLeft
+                            , nodeRight = fmap f nodeRight }
+
+tree :: Tree Integer
+tree = Node { nodeValue = 10
+            , nodeLeft = Node { nodeValue = 5
+                              , nodeLeft = Node { nodeValue = 1
+                                                , nodeLeft = None
+                                                , nodeRight = None }
+                              , nodeRight = None }
+            , nodeRight = Node { nodeValue = 15
+                               , nodeLeft = None
+                               , nodeRight = None } }
+
+reverseTree :: Tree a -> Tree a
+reverseTree None = None
+reverseTree node@Node {..} = node { nodeLeft = reverseTree nodeRight
+                                  , nodeRight = reverseTree nodeLeft }
+
+-- reverseTree tree
+-- Node { nodeValue = 10
+--      , nodeLeft = Node { nodeValue = 15
+--                        , nodeLeft = None
+--                        , nodeRight = None }
+--      , nodeRight = Node { nodeValue = 5
+--                         , nodeLeft = None
+--                         , nodeRight = Node { nodeValue = 1
+--                                            , nodeLeft = None
+--                                           , nodeRight = None } } }
+
+treeToList :: Tree a -> [a]
+treeToList None = []
+treeToList Node {..} = (treeToList nodeLeft) ++ [nodeValue] ++ (treeToList nodeRight)
+-- You said that ++ is slow, i know, but i can't understand how to avoid it in this case.
 
 {-
 You did it! Now it is time to open pull request with your changes
