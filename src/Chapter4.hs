@@ -39,7 +39,6 @@ Perfect. Let's crush this!
 
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE InstanceSigs    #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Chapter4 where
 
@@ -630,14 +629,23 @@ Implement the 'Monad' instance for our lists.
 🕯 HINT: You probably will need to implement a helper function (or
   maybe a few) to flatten lists of lists to a single list.
 -}
+-- list for tests
+list :: List Int
+list = Cons 1 (Cons 2 (Cons 3 Empty))
+
+-- function for tests
+double :: a -> List a
+double x = Cons x (Cons x Empty)
+
+listFlatten :: List (List a) -> List a
+listFlatten (Empty) = Empty
+listFlatten (Cons x Empty) = x
+listFlatten (Cons Empty xs) = listFlatten xs
+listFlatten (Cons (Cons x xs) ys) = Cons x (listFlatten (Cons xs ys))
+
 instance Monad List where
   (>>=) :: List a -> (a -> List b) -> List b
-  (>>=) Empty _ = Empty
-  (>>=) (Cons x xs) f = listConcat (f x) (xs >>= f)
-
--- Test
--- double :: Int -> List Int
--- double x = Cons x (Cons x Empty)
+  (>>=) l f = listFlatten $ fmap f l
 
 -- l = Cons 1 (Cons 2 Empty)
 -- l >>= double
@@ -659,16 +667,7 @@ Can you implement a monad version of AND, polymorphic over any monad?
 🕯 HINT: Use "(>>=)", "pure" and anonymous function
 -}
 andM :: (Monad m) => m Bool -> m Bool -> m Bool
-andM = undefined
--- I didnt understand how to solve this task. I tried these:
--- andM mx my = mx >>= (\x -> my >>= (\y -> pure (x && y)))
--- andM mx my = mx >>= (\x -> fmap (&& x) my )
--- andM mx my = mx >>= (\x -> pure (&& x) <*> my )
--- but they all failed 1 test:
--- it "Just False - Nothing" $ andM (Just False) Nothing `shouldBe` Just False
--- to be honest i dont understand why it should be Just False in this case but at the same time it should be Nothing in these cases:
--- it "Nothing - Just" $ andM Nothing (Just True) `shouldBe` Nothing
--- it "Just True - Nothing" $ andM (Just True) Nothing `shouldBe` Nothing
+andM mx my = mx >>= (\x -> if x then my else mx)
 
 {- |
 =🐉= Task 9*: Final Dungeon Boss
@@ -712,48 +711,42 @@ Specifically,
  ❃ Implement the function to convert Tree to list
 -}
 
-data Tree a = None | Node { nodeValue :: a
-                          , nodeLeft :: Tree a
-                          , nodeRight :: Tree a } deriving (Show)
+data Tree a = None | Node a (Tree a) (Tree a) deriving (Show)
 
 instance Functor Tree where
   fmap :: (a -> b) -> Tree a -> Tree b
   fmap _ None = None
-  fmap f (Node {..}) = Node { nodeValue = f nodeValue
-                            , nodeLeft = fmap f nodeLeft
-                            , nodeRight = fmap f nodeRight }
+  fmap f (Node value left right) = Node (f value) (fmap f left) (fmap f right)
 
 tree :: Tree Integer
-tree = Node { nodeValue = 10
-            , nodeLeft = Node { nodeValue = 5
-                              , nodeLeft = Node { nodeValue = 1
-                                                , nodeLeft = None
-                                                , nodeRight = None }
-                              , nodeRight = None }
-            , nodeRight = Node { nodeValue = 15
-                               , nodeLeft = None
-                               , nodeRight = None } }
+tree = Node 10
+            (Node 5
+                  (Node 1
+                        None
+                        None)
+                  None)
+            (Node 15
+                  None
+                  None)
 
 reverseTree :: Tree a -> Tree a
 reverseTree None = None
-reverseTree node@Node {..} = node { nodeLeft = reverseTree nodeRight
-                                  , nodeRight = reverseTree nodeLeft }
+reverseTree (Node value left right) = Node value (reverseTree right) (reverseTree left)
 
 -- reverseTree tree
--- Node { nodeValue = 10
---      , nodeLeft = Node { nodeValue = 15
---                        , nodeLeft = None
---                        , nodeRight = None }
---      , nodeRight = Node { nodeValue = 5
---                         , nodeLeft = None
---                         , nodeRight = Node { nodeValue = 1
---                                            , nodeLeft = None
---                                           , nodeRight = None } } }
+-- Node 10
+--      (Node 15
+--            None
+--            None)
+--      (Node 5
+--            None
+--            (Node 1
+--                  None
+--                  None))
 
 treeToList :: Tree a -> [a]
 treeToList None = []
-treeToList Node {..} = (treeToList nodeLeft) ++ [nodeValue] ++ (treeToList nodeRight)
--- You said that ++ is slow, i know, but i can't understand how to avoid it in this case.
+treeToList (Node value left right) = (treeToList left) ++ [value] ++ (treeToList right)
 
 {-
 You did it! Now it is time to open pull request with your changes
